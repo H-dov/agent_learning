@@ -11,6 +11,15 @@
 
     # 转换为 LLM 格式
     llm_tools = [t.to_llm_format() for t in tools]
+
+MCP 支持:
+    from tools.builtins import MCPToolAdapter, SyncMCPToolAdapter
+
+    # 同步模式
+    adapter = SyncMCPToolAdapter()
+    adapter.add_local_tools(get_builtin_tools())
+    adapter.connect_mcp_server("my_server", "http://localhost:8000")
+    tools = adapter.get_all_tools_llm_format()
 """
 
 from .read import read_file
@@ -22,9 +31,17 @@ from .find import find
 from .ls import ls
 from .search import search
 from .tool_def import Tool, get_builtin_tools
+from .mcp_sse_client import (
+    MCPSSERClient,
+    MCPToolAdapter,
+    MCPToolCall,
+    MCPToolInfo,
+    MCPToolResult,
+    SyncMCPToolAdapter,
+    create_sync_adapter,
+)
 
 __all__ = [
-    # 工具函数
     "read_file",
     "write_file",
     "edit_file",
@@ -33,7 +50,13 @@ __all__ = [
     "find",
     "ls",
     "search",
-    # 工具定义
     "Tool",
     "get_builtin_tools",
+    "MCPSSERClient",
+    "MCPToolAdapter",
+    "MCPToolCall",
+    "MCPToolInfo",
+    "MCPToolResult",
+    "SyncMCPToolAdapter",
+    "create_sync_adapter",
 ]
