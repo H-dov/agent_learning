@@ -47,7 +47,7 @@ def get_builtin_tools() -> List[Tool]:
     from .find import find
     from .ls import ls
     from .search import search
-    from .lrc_embedder import embed_lyrics_to_flac, batch_embed_lyrics, extract_lyrics_from_flac
+    from core.subagent import run_subagent
 
     return [
         Tool(
@@ -156,44 +156,18 @@ def get_builtin_tools() -> List[Tool]:
             fn=search,
         ),
         Tool(
-            name="embed_lyrics",
-            description="Embed LRC lyrics into a FLAC file's metadata. Automatically finds matching .lrc file if not specified.",
+            name="subagent",
+            description="Launch a sub-agent to execute complex tasks independently. Use this for tasks that need isolation from main context. Returns the final result without intermediate logs.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "flac_path": {"type": "string", "description": "Path to the FLAC file"},
-                    "lrc_path": {"type": "string", "description": "Path to the LRC file (optional, auto-detected if not provided)"},
-                    "lyrics_text": {"type": "string", "description": "Direct lyrics text (optional, alternative to lrc_path)"},
+                    "task": {"type": "string", "description": "Task description for the sub-agent to execute"},
+                    "tools": {"type": "string", "description": "Comma-separated list of tools available to sub-agent (optional)"},
+                    "timeout": {"type": "integer", "description": "Timeout in seconds (default: 300)"},
                 },
-                "required": ["flac_path"],
+                "required": ["task"],
             },
-            fn=embed_lyrics_to_flac,
-        ),
-        Tool(
-            name="batch_embed_lyrics",
-            description="Batch embed lyrics to all FLAC files in a directory. Matches FLAC files with corresponding .lrc files.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "directory": {"type": "string", "description": "Directory path containing FLAC and LRC files"},
-                    "recursive": {"type": "boolean", "description": "Search subdirectories recursively"},
-                },
-                "required": ["directory"],
-            },
-            fn=batch_embed_lyrics,
-        ),
-        Tool(
-            name="extract_lyrics",
-            description="Extract embedded lyrics from a FLAC file.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "flac_path": {"type": "string", "description": "Path to the FLAC file"},
-                    "output_lrc": {"type": "string", "description": "Output LRC file path (optional, prints to console if not provided)"},
-                },
-                "required": ["flac_path"],
-            },
-            fn=extract_lyrics_from_flac,
+            fn=run_subagent,
         ),
     ]
 
