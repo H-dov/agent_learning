@@ -66,5 +66,11 @@ def call_llm(
     return result
 
 
+def call_llm_simple(prompt: str, system_prompt: str | None = None) -> str:
+    """简单的 LLM 调用，直接返回文本结果"""
+    result = call_llm(prompt=prompt, system_prompt=system_prompt)
+    return result if isinstance(result, str) else result.get("content", "")
+
+
 if __name__ == "__main__":
     print("Basic:", call_llm("用一句话解释什么是 Agent。"))

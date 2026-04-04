@@ -11,6 +11,7 @@ from typing import Any, Tuple
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.llm import call_llm
+from core.memory import compress_if_needed, get_memory_stats
 from core.node import Node, Flow, shared
 from tools import get_tools, ToolExecutor
 from tools.builtins.mcp_sse_client import (
@@ -38,6 +39,9 @@ class ChatNode(Node):
     def exec(self, payload: Any) -> Tuple[str, Any]:
         messages = shared.get("messages", [])
         tools = shared.get("tools", [])
+        
+        messages = compress_if_needed(messages)
+        shared["messages"] = messages
         
         user_input = shared.get("last_user_input", "")
         skill_manager = shared.get("skill_manager")
