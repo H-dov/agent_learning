@@ -1,4 +1,4 @@
-"""Chatbot with Tool Support - 支持工具调用的对话机器人（含 MCP 支持）"""
+"""Chatbot with Tool Support - 支持工具调用的对话机器人（含 MCP 和 Skills 支持）"""
 
 from __future__ import annotations
 
@@ -19,8 +19,9 @@ from tools.builtins.mcp_sse_client import (
     MCPToolResult,
     SyncMCPToolAdapter,
 )
+from tools.skill_manager import SkillManager, create_skill_manager
 
-SYSTEM_PROMPT = (
+BASE_SYSTEM_PROMPT = (
     "你是一个会调用工具的助手。"
     "当问题涉及最新信息、模型版本、产品发布时间或事实核验时，优先先调用 search 工具，再基于搜索结果回答。"
     "若问题是本地文件/代码相关，优先使用 read/grep/find/ls 等本地工具。"
@@ -37,9 +38,18 @@ class ChatNode(Node):
     def exec(self, payload: Any) -> Tuple[str, Any]:
         messages = shared.get("messages", [])
         tools = shared.get("tools", [])
-        # print(f"LLM请求: {messages} 工具: {tools}")
-        assistant_message = call_llm(messages=messages, tools=tools, system_prompt=SYSTEM_PROMPT)
-        # print(f"LLM回复: {assistant_message}")
+        
+        user_input = shared.get("last_user_input", "")
+        skill_manager = shared.get("skill_manager")
+        
+        system_prompt = BASE_SYSTEM_PROMPT
+        
+        if skill_manager and user_input:
+            skill_prompt = skill_manager.build_skill_prompt(user_input)
+            if skill_prompt:
+                system_prompt = BASE_SYSTEM_PROMPT + skill_prompt
+        
+        assistant_message = call_llm(messages=messages, tools=tools, system_prompt=system_prompt)
         messages.append(assistant_message)
         shared["messages"] = messages
 
@@ -102,16 +112,31 @@ class OutputNode(Node):
         return "default", None
 
 
-def run_chat(use_mcp: bool = False, mcp_servers: list | None = None) -> None:
+def run_chat(
+    use_mcp: bool = False, 
+    mcp_servers: list | None = None,
+    skills_dir: str | None = None,
+) -> None:
     """运行对话循环
     
     Args:
         use_mcp: 是否使用 MCP 远程工具
-        mcp_servers: MCP 服务器配置列表，格式: [{"name": "server1", "url": "http://localhost:8000"}]
+        mcp_servers: MCP 服务器配置列表
+        skills_dir: Skills 目录路径
     """
     print("=" * 60)
     print("🤖 Chatbot with Tools")
     print("=" * 60)
+    
+    skill_manager = create_skill_manager(skills_dir)
+    skills_count = len(skill_manager.skills)
+    
+    if skills_count > 0:
+        print(f"已加载 {skills_count} 个技能:")
+        for skill in skill_manager.list_skills():
+            desc = skill.description[:50] + "..." if len(skill.description) > 50 else skill.description
+            print(f"  - {skill.name}: {desc}")
+        print()
     
     if use_mcp:
         print("模式: MCP 远程工具")
@@ -125,6 +150,7 @@ def run_chat(use_mcp: bool = False, mcp_servers: list | None = None) -> None:
     shared.clear()
     shared["messages"] = []
     shared["use_mcp"] = use_mcp
+    shared["skill_manager"] = skill_manager
 
     if use_mcp:
         adapter = SyncMCPToolAdapter()
@@ -178,6 +204,7 @@ def run_chat(use_mcp: bool = False, mcp_servers: list | None = None) -> None:
             if not user_input:
                 continue
 
+            shared["last_user_input"] = user_input
             shared["messages"].append({"role": "user", "content": user_input})
             flow = Flow(chat)
             flow.run(None)
@@ -186,11 +213,25 @@ def run_chat(use_mcp: bool = False, mcp_servers: list | None = None) -> None:
             shared["mcp_adapter"].close_all()
 
 
-async def run_chat_async(use_mcp: bool = False, mcp_servers: list | None = None) -> None:
+async def run_chat_async(
+    use_mcp: bool = False, 
+    mcp_servers: list | None = None,
+    skills_dir: str | None = None,
+) -> None:
     """异步版本的对话循环"""
     print("=" * 60)
     print("🤖 Chatbot with Tools (Async)")
     print("=" * 60)
+    
+    skill_manager = create_skill_manager(skills_dir)
+    skills_count = len(skill_manager.skills)
+    
+    if skills_count > 0:
+        print(f"已加载 {skills_count} 个技能:")
+        for skill in skill_manager.list_skills():
+            desc = skill.description[:50] + "..." if len(skill.description) > 50 else skill.description
+            print(f"  - {skill.name}: {desc}")
+        print()
     
     if use_mcp:
         print("模式: MCP 远程工具 (Async)")
@@ -204,6 +245,7 @@ async def run_chat_async(use_mcp: bool = False, mcp_servers: list | None = None)
     shared.clear()
     shared["messages"] = []
     shared["use_mcp"] = use_mcp
+    shared["skill_manager"] = skill_manager
 
     if use_mcp:
         adapter = MCPToolAdapter()
@@ -257,6 +299,7 @@ async def run_chat_async(use_mcp: bool = False, mcp_servers: list | None = None)
             if not user_input:
                 continue
 
+            shared["last_user_input"] = user_input
             shared["messages"].append({"role": "user", "content": user_input})
             flow = Flow(chat)
             flow.run(None)
@@ -272,6 +315,7 @@ def main() -> None:
     parser.add_argument("--mcp", action="store_true", help="启用 MCP 远程工具")
     parser.add_argument("--mcp-url", type=str, help="MCP 服务器 URL (可多次指定)", action="append")
     parser.add_argument("--async", dest="use_async", action="store_true", help="使用异步模式")
+    parser.add_argument("--skills-dir", type=str, help="Skills 目录路径")
     args = parser.parse_args()
     
     if not os.environ.get("DASH_SCOPE_API_KEY"):
@@ -283,9 +327,17 @@ def main() -> None:
         mcp_servers = [{"name": f"server{i}", "url": url} for i, url in enumerate(args.mcp_url)]
 
     if args.use_async:
-        asyncio.run(run_chat_async(use_mcp=args.mcp, mcp_servers=mcp_servers))
+        asyncio.run(run_chat_async(
+            use_mcp=args.mcp, 
+            mcp_servers=mcp_servers,
+            skills_dir=args.skills_dir,
+        ))
     else:
-        run_chat(use_mcp=args.mcp, mcp_servers=mcp_servers)
+        run_chat(
+            use_mcp=args.mcp, 
+            mcp_servers=mcp_servers,
+            skills_dir=args.skills_dir,
+        )
 
 
 if __name__ == "__main__":
